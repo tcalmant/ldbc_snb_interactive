@@ -12,3 +12,6 @@ validation_params.csv
 *-expected.json
 results/
 *.DS_Store
+
+out-*
+.*cache*
