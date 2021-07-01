@@ -1,13 +1,30 @@
 #!/usr/bin/env python3
 
-from typing import Dict, List, IO, Tuple
+from typing import Dict, List, IO, Optional, Tuple
 import argparse
+import csv
 import pathlib
 import re
 import shutil
 import sys
 
 from fuzzywuzzy import fuzz
+
+
+class LDBCDialect(csv.Dialect):
+    """
+    Custom dialect for LDBC
+    """
+
+    delimiter = "|"
+    doublequote = True
+    lineterminator = "\n"
+    quotechar = '"'
+    quoting = csv.QUOTE_MINIMAL
+
+
+# Register the dialect
+csv.register_dialect("ldbc", LDBCDialect)
 
 
 def parse_schema(sql_file: pathlib.Path) -> Dict[str, List[str]]:
@@ -111,7 +128,7 @@ def find_root(folder: pathlib.Path) -> pathlib.Path:
         raise IOError(f"Root not found under {folder}")
 
 
-def read_line(in_fd: IO[bytes]) -> bytes:
+def read_line(in_fd: IO[str]) -> str:
     """
     Reads a single line from a file in bytes mode
 
@@ -122,18 +139,18 @@ def read_line(in_fd: IO[bytes]) -> bytes:
     while True:
         # Ignore the first line
         read_char = in_fd.read(1)
-        if not read_char or read_char == b"\n":
+        if not read_char or read_char == "\n":
             # Don't include EOL or EOF
             break
 
         result.append(read_char)
 
-    return b"".join(result)
+    return "".join(result)
 
 
 def update_header(
     table: str, schema: Dict[str, List[str]], header: str
-) -> str:
+) -> Tuple[str, List[int]]:
     """
     Returns the fixed header for the given file
     """
@@ -144,7 +161,7 @@ def update_header(
     except KeyError:
         # Unknown schema
         print("Skipping unknown schema:", table_name)
-        return header
+        return header, []
 
     # Compute the prefix of each column
     prefix = "".join(t[0].lower() for t in table.split("_"))
@@ -183,10 +200,15 @@ def update_header(
             raw_title,
             low_title.replace("post", "message"),
             low_title.replace("comment", "message"),
+            low_title.replace("parentpostid", "replyof"),
+            low_title.replace("parentcommentid", "replyof"),
             low_title.replace("university", "organisation"),
             low_title.replace("company", "organisation"),
             low_title.replace("locationplace", "place"),
+            low_title.replace("locationcity", "place"),
             low_title.replace("containerforum", "forum"),
+            low_title.replace("partofplace", "containerplace"),
+            low_title.replace("creationdate", "joindate"),
         }:
             for col_name in table_schema:
                 ratio = fuzz.ratio(title, col_name)
@@ -209,15 +231,19 @@ def update_header(
     # Back to a dictionary: current title -> schema
     matches: Dict[str, str] = {t[0]: t[1][0][1] for t in best_guesses}
 
-    new_titles = [
-        matches.get(raw_title, raw_title) for raw_title in raw_titles
-    ]
+    # Make the new header and mark invalid columns
+    new_titles = table_schema[:]
+    cols_indices = [-1] * len(table_schema)
+    not_found = []
+    for idx, raw_title in enumerate(raw_titles):
+        try:
+            schema_col_name = matches[raw_title]
+        except KeyError:
+            not_found.append(initial_titles[idx])
+        else:
+            schema_col_idx = table_schema.index(schema_col_name)
+            cols_indices[schema_col_idx] = idx
 
-    not_found = sorted(
-        initial_titles[idx]
-        for idx, raw_title in enumerate(raw_titles)
-        if raw_title not in matches
-    )
     if not_found:
         print(
             "Missed convertion of",
@@ -228,8 +254,17 @@ def update_header(
             ", ".join(not_found),
             file=sys.stderr,
         )
+    elif -1 in cols_indices:
+        print(
+            "WARNING: we got some holes in indices handling", file=sys.stderr
+        )
+    elif cols_indices == sorted(cols_indices):
+        # Table schema and CSV columns are in the same order: no need for an
+        # explicit rewrite
+        print("CSV and schema are alike: no need for a full rewrite")
+        cols_indices.clear()
 
-    return "|".join(new_titles)
+    return "|".join(new_titles), cols_indices
 
 
 def find_closest(value: str, possible_values: List[str]) -> str:
@@ -280,20 +315,35 @@ def merge_files(
         print("No schema found for folder", folder.stem, file=sys.stderr)
         table_name = folder.stem
 
-    with open(output_file, "wb") as out_fd:
+    cols_indices: Optional[List[int]] = None
+    with open(output_file, "w", encoding="utf8", newline="") as out_fd:
         for file_idx, file_part in enumerate(sorted(folder.glob("*.csv"))):
-            with open(file_part, "rb") as in_fd:
+            with open(file_part, "r", encoding="utf8") as in_fd:
                 if file_idx == 0:
                     # Work the header
-                    raw_header = read_line(in_fd).decode("utf8")
-                    new_header = update_header(table_name, schema, raw_header)
-                    out_fd.write(new_header.encode("utf8"))
-                    out_fd.write(b"\n")
+                    raw_header = read_line(in_fd)
+                    new_header, cols_indices = update_header(
+                        table_name, schema, raw_header
+                    )
+                    out_fd.write(new_header)
+                    out_fd.write("\n")
                 else:
                     # Ignore header of other files
                     read_line(in_fd)
 
-                shutil.copyfileobj(in_fd, out_fd)
+                if not cols_indices:
+                    # No information about columns: keep file as is
+                    shutil.copyfileobj(in_fd, out_fd)
+                else:
+                    # Read the CSV file and extract the valid columns only
+                    reader = csv.reader(in_fd, dialect="ldbc")
+                    writer = csv.writer(out_fd, dialect="ldbc")
+
+                    for line in reader:
+                        writer.writerow(
+                            line[col_idx] if col_idx != -1 else ""
+                            for col_idx in cols_indices
+                        )
 
 
 def run(folder: pathlib.Path, ddl_folder: pathlib.Path) -> int:
