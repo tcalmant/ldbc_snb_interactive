@@ -340,7 +340,9 @@ def merge_files(
                     reader = csv.reader(in_fd, dialect="ldbc")
                     writer = csv.writer(out_fd, dialect="ldbc")
 
-                    last_line: Deque[List[str]] = collections.deque(maxlen=100)
+                    last_line: Deque[List[str]] = collections.deque(
+                        maxlen=5000
+                    )
                     for line in reader:
                         line = [
                             line[col_idx] if col_idx != -1 else ""
