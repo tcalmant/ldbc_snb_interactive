@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
-from typing import Dict, List, IO, Optional, Tuple
+from typing import Deque, Dict, List, IO, Optional, Tuple
 import argparse
+import collections
 import csv
 import pathlib
 import re
@@ -339,11 +340,16 @@ def merge_files(
                     reader = csv.reader(in_fd, dialect="ldbc")
                     writer = csv.writer(out_fd, dialect="ldbc")
 
+                    last_line: Deque[List[str]] = collections.deque(maxlen=100)
                     for line in reader:
-                        writer.writerow(
+                        line = [
                             line[col_idx] if col_idx != -1 else ""
                             for col_idx in cols_indices
-                        )
+                        ]
+                        if line not in last_line:
+                            # Poor man's uniq
+                            writer.writerow(line)
+                            last_line.appendleft(line)
 
 
 def run(folder: pathlib.Path, ddl_folder: pathlib.Path) -> int:
