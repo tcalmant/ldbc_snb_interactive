@@ -31,10 +31,10 @@ COPY likes FROM '/data/dynamic/person_likes_comment_0_0.csv' WITH DELIMITER '|' 
 COPY person_language FROM '/data/dynamic/person_speaks_language_0_0.csv' WITH DELIMITER '|' CSV HEADER;
 
 -- Populate person_university table
-COPY person_university FROM '/data/dynamic/person_studyAt_organisation_0_0.csv' WITH DELIMITER '|' CSV HEADER;
+COPY person_university FROM '/data/dynamic/person_studyAt_university_0_0.csv' WITH DELIMITER '|' CSV HEADER;
 
 -- Populate person_company table
-COPY person_company FROM '/data/dynamic/person_workAt_organisation_0_0.csv' WITH DELIMITER '|' CSV HEADER;
+COPY person_company FROM '/data/dynamic/person_workAt_company_0_0.csv' WITH DELIMITER '|' CSV HEADER;
 
 -- Populate place table
 COPY place FROM '/data/static/place_0_0.csv' WITH DELIMITER '|' CSV HEADER;
