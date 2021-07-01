@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import Dict, List, IO
-from pprint import pprint
+from typing import Dict, List, IO, Tuple
 import argparse
 import pathlib
 import re
@@ -152,12 +151,16 @@ def update_header(
 
     # Work on each column title
     raw_titles = header.split("|")
+    initial_titles = raw_titles[:]
     for idx in range(len(raw_titles)):
         # Special case: we now the ID column must be prefixed
         raw_title = raw_titles[idx]
         if raw_title == "id":
             # Special case
-            raw_titles[idx] = f"{table_name}id"
+            raw_title = f"{table_name}id"
+
+        # Add the prefix
+        raw_titles[idx] = f"{prefix}_{raw_title}"
 
     if len(raw_titles) > len(table_schema):
         print(
@@ -169,39 +172,59 @@ def update_header(
             len(table_schema),
             file=sys.stderr,
         )
-        # Find the best match for each column
-        best_matches = {}
-        for title in raw_titles:
-            best_matches[title] = sorted(
-                (
-                    (fuzz.ratio(title, col_name), col_name)
-                    for col_name in table_schema
-                ),
-                reverse=True,
-            )
 
-        # Get only the best matches
-        best_guesses = sorted(
-            best_matches.items(), key=lambda x: x[1][0], reverse=True
-        )
-
-        # Extract the original column names
-        old_titles = raw_titles[:]
-        raw_titles = [t[0] for t in best_guesses][: len(table_schema)]
-        print("... supposing header to be:", ", ".join(raw_titles))
-        print(
-            "... removed columns:",
-            ", ".join(col for col in old_titles if col not in raw_titles),
-        )
-
-    new_titles = []
+    # Find the best match for each column
+    best_matches: Dict[str, List[Tuple[int, str]]] = {}
     for raw_title in raw_titles:
-        # Find the closest column name
-        new_title = find_closest(f"{prefix}_{raw_title}", table_schema)
-        table_schema.remove(new_title)
-        if raw_title != new_title:
-            print("... renaming column", raw_title, "->", new_title)
-        new_titles.append(new_title)
+        low_title = raw_title.lower()
+        title_matches: List[Tuple[int, str]] = []
+        # Give some hints for string comparison
+        for title in {
+            raw_title,
+            low_title.replace("post", "message"),
+            low_title.replace("comment", "message"),
+            low_title.replace("university", "organisation"),
+            low_title.replace("locationplace", "place"),
+            low_title.replace("containerforum", "forum"),
+        }:
+            for col_name in table_schema:
+                ratio = fuzz.ratio(title, col_name)
+                if ratio > 70 or any(
+                    low_title in col_name.lower()
+                    or col_name.lower() in low_title
+                    for col_name in table_schema
+                ):
+                    # Empirical: got invalid matches at 62, valid at 64
+                    title_matches.append((ratio, col_name))
+
+        if title_matches:
+            best_matches[raw_title] = sorted(title_matches, reverse=True)
+
+    # Get only the best matches
+    best_guesses = sorted(
+        best_matches.items(), key=lambda x: x[1][0], reverse=True
+    )[: len(table_schema)]
+
+    # Back to a dictionary: current title -> schema
+    matches: Dict[str, str] = {t[0]: t[1][0][1] for t in best_guesses}
+
+    new_titles = [
+        matches.get(raw_title, raw_title) for raw_title in raw_titles
+    ]
+
+    not_found = sorted(
+        initial_titles[idx]
+        for idx, raw_title in enumerate(raw_titles)
+        if raw_title not in matches
+    )
+    if not_found:
+        print(
+            "Missed convertion of", len(not_found), "columns for",
+            table_name,
+            ":",
+            ", ".join(not_found),
+            file=sys.stderr,
+        )
 
     return "|".join(new_titles)
 
@@ -284,10 +307,6 @@ def run(folder: pathlib.Path, ddl_folder: pathlib.Path) -> int:
 
     # Parse the loading script
     csv_table = table_files(ddl_folder / "snb-load.sql")
-
-    from pprint import pprint
-
-    pprint(csv_table)
 
     # Parse the schema
     schema = parse_schema(ddl_folder / "schema.sql")
