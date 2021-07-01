@@ -184,6 +184,7 @@ def update_header(
             low_title.replace("post", "message"),
             low_title.replace("comment", "message"),
             low_title.replace("university", "organisation"),
+            low_title.replace("company", "organisation"),
             low_title.replace("locationplace", "place"),
             low_title.replace("containerforum", "forum"),
         }:
@@ -219,7 +220,9 @@ def update_header(
     )
     if not_found:
         print(
-            "Missed convertion of", len(not_found), "columns for",
+            "Missed convertion of",
+            len(not_found),
+            "columns for",
             table_name,
             ":",
             ", ".join(not_found),
@@ -320,10 +323,13 @@ def run(folder: pathlib.Path, ddl_folder: pathlib.Path) -> int:
         part = root / part_name
         for child in part.iterdir():
             if child.is_dir():
-                print("... merging", child.stem, "...")
+                # Find the closest name of CSV file in the loading script
+                csv_name = find_closest(child.stem, list(csv_table))
+
+                print("... merging", child.stem, "into", csv_name, "...")
                 merge_files(
                     child,
-                    part / f"{child.stem.lower()}_0_0.csv",
+                    part / csv_name,
                     schema,
                     csv_table,
                 )
