@@ -88,6 +88,12 @@ them and they cause column constraint errors (already done in `wip`).
    `POSTGRES_DATABASE_DIR` variable accordingly.
 1. If necessary, you can change the Docker container published port by setting
 the `POSTGRES_PORT` variable in `scripts/vars.sh`
+1. Set the `POSTGRES_CSV_DIR` environment variable to the full path to the
+   folder containing the `static` and `dynamic` subfolders:
+   ```bash
+   # From the ldbc_interactive root directory
+   export POSTGRES_CSV_DIR=$(pwd)/out-scale-${scale_factor}-explode-attrs/csv/interactive/singular-merged-fk/
+   ```
 1. Start the database and load the data:
    ```bash
    ./scripts/start.sh && ./scripts/create-db.sh && ./scripts/load.sh
