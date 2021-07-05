@@ -7,7 +7,7 @@
 The recommended environment for executing this benchmark is as follows: the benchmark scripts (Bash) and the LDBC driver (Java 8) run on the host machine, while the PostgreSQL database runs in a Docker container. Therefore, the requirements are as follows:
 
 * Bash
-* Java 8
+* Java 9
 * Docker 19+
 * enough free space in the directory `$POSTGRES_DATABASE_DIR` (its default value is specified in `scripts/vars.sh`)
 
@@ -29,7 +29,7 @@ The default configuration of the database (e.g. database name, user, password) i
     scripts/load.sh
     ```
 
-    Note that the `load.sh` (re)generates PostgreSQL-specific CSV files for comments (`-postgres.csv`), if either 
+    Note that the `load.sh` (re)generates PostgreSQL-specific CSV files for comments (`-postgres.csv`), if either
     * they do no exist,
     * the source CSV is newer than the generated one, or
     * the user forces to do so by setting the environment variable `POSTGRES_FORCE_REGENERATE=yes`
